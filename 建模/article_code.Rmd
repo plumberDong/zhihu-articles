@@ -1,0 +1,102 @@
+---
+title: "article_code"
+author: "plumber"
+date: "3/31/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# data
+
+```{r}
+pacman::p_load(tidyverse, broom)
+
+ice_cream <- tibble(
+  temp=c(11.9, 14.2, 15.2, 16.4, 17.2, 18.1, 
+         18.5, 19.4, 22.1, 22.6, 23.4, 25.1),
+  units=c(185L, 215L, 332L, 325L, 408L, 421L, 
+          406L, 412L, 522L, 445L, 544L, 614L)
+  )
+
+ice_cream %>%
+  ggplot(aes(x = temp, y = units)) + 
+  geom_point() + 
+  ggtitle("Observations of ice creams sold") + 
+  xlab("Temperature(Celsius)") + 
+  ylab("Units sold")
+```
+
+# constant change
+
+```{r}
+fit1 <- lm(units ~ temp, data = ice_cream)
+
+ice_cream %>%
+  ggplot(aes(x = temp, y = units)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = F, color = "blue") + 
+  ggtitle("Observations of ice creams sold") + 
+  xlim(c(-5,30)) + 
+  xlab("Temperature(Celsius)") + 
+  ylab("Units sold")
+```
+
+# Constant sales growth rate
+
+```{r}
+fit2 <- lm(log(units) ~ temp, data = ice_cream)
+
+ggplot(data = tibble(x = -5:30,
+                     fitted = exp(4.4021 + 0.0826 * x)),
+                     aes(x = x, y = fitted)) + 
+  geom_line(color = "blue") + 
+  geom_point(data = ice_cream, mapping = aes(x = temp, y = units)) + 
+  xlab("Temperature(Celsius)") + 
+  ylab("Units sold")
+```
+
+# Constant demand elasticity
+
+```{r}
+fit3 <- lm(log(units) ~ log(temp), data = ice_cream)
+
+ggplot(data = tibble(x = -5:30,
+                     fitted = exp(1.514)*x^1.525),
+                     aes(x = x, y = fitted)) + 
+  geom_line(color = "blue") + 
+  geom_point(data = ice_cream, mapping = aes(x = temp, y = units)) + 
+  xlab("Temperature(Celsius)") + 
+  ylab("Units sold") 
+```
+
+## S
+
+```{r}
+loss <- function(mu0, M, b, shape){
+  mu <- mu0 * M * exp(b * ice_cream$temp) / (mu0 * (exp(b * ice_cream$temp) - 1) + M)
+  sum(-dnbinom(x = ice_cream$units, mu = mu, size = shape))
+}
+
+start_vals <- list(mu0 = 10, b = 0.2, M = 800, shape = 70)
+
+nb_model <- bbmle::mle2(loss,
+            start = start_vals, control = list(maxit = 2000))
+
+summary(nb_model)
+
+```
+
+```{r}
+mu0 <- coef(nb_model)[1]
+M <- coef(nb_model)[2]
+b <-  coef(nb_model)[3]
+
+ggplot(data = tibble(x = -5:30,
+                     fitted = mu0 * M * exp(b *x) / (mu0 * (exp(b * x) - 1) + M)),
+                     aes(x = x, y = fitted)) + 
+         geom_line(color = "blue") + 
+  geom_point(data = ice_cream, aes(x = temp, y = units), color = "black", alpha = .6)
+```

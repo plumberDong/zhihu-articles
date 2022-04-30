@@ -1,0 +1,145 @@
+---
+title: "CEM"
+output: html_document
+date: '2022-04-26'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(MatchIt)
+library(tidyverse)
+```
+
+```{r}
+# 模拟数据
+# 首先是模拟对照组的数据
+educ_c <- runif(40, min = 0, max = 8)
+age_c <- runif(40, min = 0, max = 8)
+income_c <- educ_c * 1 + age_c * 1 + 20 + rnorm(40, 0, 2)
+
+# 模拟实验组的数据
+educ_t <- runif(20, min = 1, max = 5)
+age_t <- runif(20, min = 1, max = 5)
+income_t <- educ_t * 1 + age_t * 1 + 20 + rnorm(20, 6, 2)
+
+# 标签
+labels <- c(rep("C", 40), rep("T", 20))
+
+# 数据
+dat <- tibble(edu = c(educ_c, educ_t),
+              age = c(age_c, age_t),
+              income = c(income_c, income_t),
+              labels = labels)
+
+# 绘图
+ggplot(data = dat, aes(x = edu, y = age)) +
+  geom_text(aes(label = labels, color = labels))
+```
+
+
+```{r}
+# 回归分析看一下
+coef(lm(income ~ labels, data = dat))[2]
+```
+
+```{r}
+# 循环测试：模拟多次
+sim_ate <- function(){
+  
+  # 模拟数据
+  # 首先是模拟对照组的数据
+  educ_c <- runif(40, min = 0, max = 8)
+  age_c <- runif(40, min = 0, max = 8)
+  income_c <- educ_c * 1 + age_c * 1 + 20 + rnorm(40, mean = 0 , sd = 2)
+  
+  # 模拟实验组的数据
+  educ_t <- runif(20, min = 1, max = 5)
+  age_t <- runif(20, min = 1, max = 5)
+  income_t <- educ_t * 1 + age_t * 1 + 20 + rnorm(20, 5, 2)
+  
+  # 标签
+  labels <- c(rep("C", 40), rep("T", 20))
+  
+  # 数据
+  dat <- tibble(edu = c(educ_c, educ_t),
+                age = c(age_c, age_t),
+                income = c(income_c, income_t),
+                labels = labels)
+  
+  coef(lm(income ~ labels  + edu + age, data = dat))[2]
+}
+
+
+map_dbl(1:500, ~sim_ate()) %>% density() %>% plot()
+```
+
+
+```{r}
+# 然后测试一下matchit
+library(MatchIt)
+m.out <- matchit(labels ~ edu + age, 
+                 data = dat, 
+                 method = "cem",
+                 cutpoints = list(edu = c(2, 4, 6),
+                                  age = c(0, 2, 4, 6))
+                 )
+
+match.data(m.out) %>%
+  ggplot(aes(x = edu, y = age)) +
+  geom_text(aes(label = labels, color = labels, size = weights)) +
+  xlim(c(0, 8)) +
+  ylim(c(0, 8)) +
+  geom_hline(yintercept = c(2, 4, 6), linetype = "dashed") +
+  geom_vline(xintercept = c(2, 4, 6), linetype = "dashed")
+```
+
+
+```{r}
+lm(income ~ labels, data = match.data(m.out), weights = weights) %>% summary()
+```
+
+
+```{r}
+# 循环测试，模拟多次
+sim_att <- function(){
+  
+  # 模拟数据
+  # 首先是模拟对照组的数据
+  educ_c <- runif(40, min = 0, max = 8)
+  age_c <- runif(40, min = 0, max = 8)
+  income_c <- educ_c * 1 + age_c * 1 + 20 + rnorm(40, mean = 0 , sd = 2)
+  
+  # 模拟实验组的数据
+  educ_t <- runif(20, min = 1, max = 5)
+  age_t <- runif(20, min = 1, max = 5)
+  income_t <- educ_t * 1 + age_t * 1 + 20 + rnorm(20, 5, 2)
+  
+  # 标签
+  labels <- c(rep("C", 40), rep("T", 20))
+  
+  # 数据
+  dat <- tibble(edu = c(educ_c, educ_t),
+                age = c(age_c, age_t),
+                income = c(income_c, income_t),
+                labels = factor(labels))
+  
+  
+  # 匹配
+  m.out <- matchit(labels ~ edu + age, 
+                 data = dat,
+                 method = "cem")
+  
+  # 回归
+  coef(lm(income ~ labels, data = match.data(m.out)))[2]
+}
+
+
+map_dbl(1:1000, ~sim_att()) %>% summary()
+```
+
+
+
+
